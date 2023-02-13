@@ -1,0 +1,1 @@
+Al intentar agregar rol, verificar que ya no esté asignado al usuario
