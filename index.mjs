@@ -4,7 +4,10 @@ import express from 'express';
 import {
 	verifyKeyMiddleware,
 	InteractionResponseType,
-	InteractionType
+	InteractionType,
+	MessageComponentTypes,
+	ButtonStyleTypes,
+	TextStyleTypes
 } from 'discord-interactions';
 
 const app = express();
@@ -12,16 +15,41 @@ const PORT = process.env.PORT || 3000;
 
 app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async (req, res) => {
 
-	const { type, id, data } = req.body;
+	const { type, id, data, member } = req.body;
 
 	if (type === InteractionType.APPLICATION_COMMAND) {
 
 		const { name } = data;
 
+		if (data.resolved) {
+
+			const { resolved } = data
+			
+			if (resolved.members) {
+				res.send({
+					type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+					data: {
+						content: 'Interactuaste con un usuario'
+					}
+				})
+			}
+	
+			if (resolved.messages) {
+				res.send({
+					type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+					data: {
+						content: 'Interactuaste con un mensaje'
+					}
+				})
+			}
+		}
+
 		if (name === 'help') {
+
 			const data = await getCommands();
 			const commands = await data.json();
-			const commandsArray = commands.map((c) => c['name']);
+			const commandsFiltered = commands.filter((command) => command.type === 1);
+			const commandsArray = commandsFiltered.map(command => command.name);
 			const commandsString = commandsArray.join('\n\t- ');
 	
 			return res.send({
@@ -40,13 +68,13 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async (re
 					custom_id: 57546546,
 					components: [
 						{
-							type: 1,
+							type: MessageComponentTypes.ACTION_ROW,
 							components: [
 								{
-									type: 4,
+									type: MessageComponentTypes.INPUT_TEXT,
 									custom_id: 3324235,
 									label: "Name",
-									style: 1
+									style: TextStyleTypes.SHORT
 								}
 							]
 						}
@@ -57,15 +85,15 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async (re
 	
 		if (name === 'button') {
 			return res.send({
-				type: 4,
+				type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
 				data: {
 					components: [
 						{
-							type: 1,
+							type: MessageComponentTypes.ACTION_ROW,
 							components: [
 								{
-									type: 2,
-									style: 3,
+									type: MessageComponentTypes.BUTTON,
+									style: ButtonStyleTypes.SUCCESS,
 									label: 'Accept',
 									custom_id: 'accept_button'
 								}
@@ -78,16 +106,16 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async (re
 
 		if (name === 'roles') {
 			res.send({
-				type: 4,
+				type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
 				data: {
 					content: 'Selecciona un rol',
 					components: [
 						{
-							type: 1,
+							type: MessageComponentTypes.ACTION_ROW,
 							components: [
 								{
-									type: 6,
-									custom_id: 23254626,
+									type: MessageComponentTypes.ROLE_SELECT,
+									custom_id: 'roleMenuId',
 								}
 							]
 						}
@@ -98,15 +126,15 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async (re
 
 		if (name === 'menu') {
 			return res.send({
-				type: 4,
+				type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
 				data: {
 					content: "Elije una opción",
 					components: [
 						{
-							type: 1,
+							type: MessageComponentTypes.ACTION_ROW,
 							components: [
 								{
-									type: 3,
+									type: MessageComponentTypes.STRING_SELECT,
 									custom_id: 23254626,
 									options: [
 										{
@@ -130,36 +158,58 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async (re
 
 		if (name === 'compuesto') {
 			return res.send({
-				type: 4,
+				type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
 				data: { content: `Comando: ${name}` }
 			});
 		}
 
 		if (name === 'opciones') {
 			return res.send({
-				type: 4,
+				type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
 				data: { content: `Comando: ${name}` }
 			});
 		}
 	
 		if (!req.body.data.name) {
 			return res.send({
-				type: 4,
+				type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
 				data: { content: 'No existe ese comando' }
 			});
 		}
 	}
 
-	if (type === 3) {
-		const role = await req.body.data.values;
-		const user = req.body.member.user;
-		const rolResponse = await setRole(user, role);
-		res.send({
-			type: 4,
-			data: {
-				content: 'Recibido'
+	if (type === InteractionType.MESSAGE_COMPONENT) {
+
+		if (data.custom_id === 'roleMenuId') {
+			const selectedRole = await data.values;
+			const { user } = member;
+			const memberInfo = await getMemberInfo(user);
+			const memberInfoJson = await memberInfo.json();
+			const roles = memberInfoJson.roles;
+
+			const role = roles.filter(n => n === selectedRole[0]);
+
+			if (role.length === 0) {
+				await setRole(user, selectedRole);
+				res.send({
+					type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+					data: {
+						content: 'Role added'
+					}
+				});
+			} else {
+				res.send({
+					type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+					data: {
+						content: 'Role already exist'
+					}
+				});
 			}
-		})
+		}
+	}
+	
+	if (type === InteractionType.MODAL_SUBMIT) {
+		console.log('InteractionType.MODAL_SUBMIT');
 	}
 });
 
@@ -170,9 +220,7 @@ async function getCommands() {
 	
 	const res = await fetch(url, {
 		headers: {
-		Authorization: `Bot ${process.env.DISCORD_TOKEN}`,
-			'Content-Type': 'application/json; charset=UTF-8',
-			'User-Agent': 'DiscordBot (https://github.com/discord/discord-example-app, 1.0.0)',
+			Authorization: `Bot ${process.env.DISCORD_TOKEN}`
 		},
 		method: 'GET'
 	});
@@ -184,11 +232,21 @@ async function setRole(user, role) {
 	
 	const res = await fetch(url, {
 		headers: {
-		Authorization: `Bot ${process.env.DISCORD_TOKEN}`,
-			'Content-Type': 'application/json; charset=UTF-8',
-			'User-Agent': 'DiscordBot (https://github.com/discord/discord-example-app, 1.0.0)',
+			Authorization: `Bot ${process.env.DISCORD_TOKEN}`
 		},
 		method: 'PUT'
+	});
+	return res;
+}
+
+async function getMemberInfo(user) {
+	const url = `https://discord.com/api/v10/guilds/${process.env.GUILD_ID}/members/${user.id}`;
+
+	const res = await fetch(url, {
+		headers: {
+			Authorization: `Bot ${process.env.DISCORD_TOKEN}`
+		},
+		method: 'GET'
 	});
 	return res;
 }
