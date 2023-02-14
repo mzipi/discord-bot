@@ -15,7 +15,7 @@ const PORT = process.env.PORT || 3000;
 
 app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async (req, res) => {
 
-	const { type, id, data, member } = req.body;
+	const { type, id, data, member, message } = req.body;
 
 	if (type === InteractionType.APPLICATION_COMMAND) {
 
@@ -45,7 +45,6 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async (re
 		}
 
 		if (name === 'help') {
-
 			const data = await getCommands();
 			const commands = await data.json();
 			const commandsFiltered = commands.filter((command) => command.type === 1);
@@ -123,7 +122,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async (re
 				}
 			})
 		}
-
+		
 		if (name === 'menu') {
 			return res.send({
 				type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
@@ -178,8 +177,12 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async (re
 		}
 	}
 
-	if (type === InteractionType.MESSAGE_COMPONENT) {
+	if (message) {
 
+	}
+
+	if (type === InteractionType.MESSAGE_COMPONENT) {
+		
 		if (data.custom_id === 'roleMenuId') {
 			const selectedRole = await data.values;
 			const { user } = member;
@@ -191,20 +194,12 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async (re
 
 			if (role.length === 0) {
 				await setRole(user, selectedRole);
-				res.send({
-					type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-					data: {
-						content: 'Role added'
-					}
-				});
+				await deleteMessage(message);
 			} else {
-				res.send({
-					type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-					data: {
-						content: 'Role already exist'
-					}
-				});
+				await deleteRole(user, selectedRole);
+				await deleteMessage(message);
 			}
+			await createMessage(message.channel_id);
 		}
 	}
 	
@@ -247,6 +242,44 @@ async function getMemberInfo(user) {
 			Authorization: `Bot ${process.env.DISCORD_TOKEN}`
 		},
 		method: 'GET'
+	});
+	return res;
+}
+
+async function deleteRole(user, role) {
+	const url = `https://discord.com/api/v10/guilds/${process.env.GUILD_ID}/members/${user.id}/roles/${role}`;
+
+	const res = await fetch(url, {
+		headers: {
+			Authorization: `Bot ${process.env.DISCORD_TOKEN}`
+		},
+		method: 'DELETE'
+	});
+	return res;
+}
+
+async function deleteMessage(message) {
+	const url = `https://discord.com/api/v10/channels/${message.channel_id}/messages/${message.id}`;
+
+	const res = await fetch(url, {
+		headers: {
+			Authorization: `Bot ${process.env.DISCORD_TOKEN}`
+		},
+		method: 'DELETE'
+	});
+	return res;
+}
+
+async function createMessage(channel_id) {
+	const url = `https://discord.com/api/v10/channels/${channel_id}/messages`;
+
+	const res = await fetch(url, {
+		headers: {
+			Authorization: `Bot ${process.env.DISCORD_TOKEN}`,
+			"Content-Type": 'application/json'
+		},
+		method: 'POST',
+		body: JSON.stringify({ content: 'Role toggled' })
 	});
 	return res;
 }
