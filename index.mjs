@@ -9,11 +9,14 @@ import {
 	ButtonStyleTypes,
 	TextStyleTypes
 } from 'discord-interactions';
+import { createMsg } from './createMsg.mjs';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async (req, res) => {
+
+	// await createMsg();
 
 	const { type, id, data, member, message } = req.body;
 
